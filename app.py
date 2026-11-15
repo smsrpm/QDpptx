@@ -2,7 +2,7 @@
 (master/template, layout, positions, fonts) and steps through the deck.
 
 Rendering pipeline: LibreOffice (headless) converts .pptx -> PDF, then
-PyMuPDF rasterises each PDF page to a PNG image.
+PyMuPDF rasterises each PDF page to a PNG image. PDF files skip the first step.
 """
 
 import base64
@@ -28,9 +28,26 @@ VIEWER_HTML = (Path(__file__).parent / "viewer.html").read_text(encoding="utf-8"
 SOFFICE = shutil.which("soffice") or shutil.which("libreoffice")
 
 
+DECK_EXTS = (".pptx", ".pdf")
+MAX_SIDE_PX = 2000  # cap image size so huge pages (e.g. posters) stay light
+
+
+def pdf_to_pngs(pdf: pymupdf.Document) -> list[bytes]:
+    pages = []
+    for page in pdf:
+        zoom = min(2.0, MAX_SIDE_PX / max(page.rect.width, page.rect.height))
+        pages.append(page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("png"))
+    return pages
+
+
 @st.cache_data(show_spinner=False, max_entries=5)
-def render_slides(data: bytes, zoom: float = 2.0) -> list[bytes]:
-    """Return one PNG (bytes) per slide."""
+def render_slides(data: bytes) -> list[bytes]:
+    """Return one PNG (bytes) per slide or PDF page."""
+    if data[:1024].lstrip().startswith(b"%PDF"):  # PDFs need no conversion
+        with pymupdf.open(stream=data, filetype="pdf") as pdf:
+            return pdf_to_pngs(pdf)
+    if not SOFFICE:
+        raise RuntimeError("LibreOffice is not installed, so .pptx files cannot be rendered")
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / "deck.pptx"
         src.write_bytes(data)
@@ -41,13 +58,11 @@ def render_slides(data: bytes, zoom: float = 2.0) -> list[bytes]:
             check=True, capture_output=True, timeout=180,
         )
         with pymupdf.open(Path(tmp) / "deck.pdf") as pdf:
-            matrix = pymupdf.Matrix(zoom, zoom)
-            return [page.get_pixmap(matrix=matrix).tobytes("png") for page in pdf]
+            return pdf_to_pngs(pdf)
 
 
 if not SOFFICE:
-    st.error("LibreOffice is not installed, so slides cannot be rendered.")
-    st.stop()
+    st.caption("LibreOffice is not installed: PDFs will work, PowerPoint files won't.")
 
 
 @st.cache_resource(show_spinner="Installing fonts (first run only)…")
@@ -89,12 +104,12 @@ def gh_get(url: str, raw: bool = False) -> requests.Response:
 
 @st.cache_data(ttl=30, show_spinner=False)
 def github_decks() -> dict[str, str]:
-    """Map each .pptx path under decks/ (relative to it) to its git blob SHA."""
+    """Map each .pptx/.pdf path under decks/ (relative to it) to its git blob SHA."""
     tree = gh_get(f"https://api.github.com/repos/{GITHUB_REPO}/git/trees/"
                   f"{quote(GITHUB_BRANCH, safe='')}?recursive=1").json()["tree"]
     return {item["path"][len("decks/"):]: item["sha"] for item in tree
             if item["type"] == "blob" and item["path"].startswith("decks/")
-            and item["path"].lower().endswith(".pptx")}
+            and item["path"].lower().endswith(DECK_EXTS)}
 
 
 @st.cache_data(show_spinner=False, max_entries=10)
@@ -108,7 +123,8 @@ def local_decks() -> dict[str, Path]:
     """Fallback: the copy of decks/ deployed with the app."""
     if not DECKS_DIR.is_dir():
         return {}
-    return {f.relative_to(DECKS_DIR).as_posix(): f for f in DECKS_DIR.rglob("*.pptx")}
+    return {f.relative_to(DECKS_DIR).as_posix(): f for f in DECKS_DIR.rglob("*")
+            if f.suffix.lower() in DECK_EXTS}
 
 
 def group_by_folder(paths) -> dict[str, list[str]]:
@@ -140,7 +156,7 @@ if source == "Library":
         paths = local
     decks = group_by_folder(paths)
     if not decks:
-        st.info("No .pptx files found in the repository's `decks/` folder yet.")
+        st.info("No .pptx or .pdf files found in the repository's `decks/` folder yet.")
         st.stop()
     folder_col, file_col, refresh_col = st.columns([5, 5, 1], vertical_alignment="bottom")
     folder = folder_col.selectbox("Folder", list(decks))
@@ -155,7 +171,7 @@ if source == "Library":
         st.error(f"Could not load this file: {exc}")
         st.stop()
 else:
-    uploaded = st.file_uploader("Upload a .pptx file", type="pptx")
+    uploaded = st.file_uploader("Upload a .pptx or .pdf file", type=["pptx", "pdf"])
     if not uploaded:
         st.stop()
     data = uploaded.getvalue()
@@ -174,6 +190,7 @@ if not slides:
 # Slide display, navigation, keyboard and full screen run in the browser.
 slide_w, slide_h = struct.unpack(">II", slides[0][16:24])  # PNG header size
 uris = ["data:image/png;base64," + base64.b64encode(s).decode() for s in slides]
-viewer = VIEWER_HTML.replace("__SLIDES__", json.dumps(uris))
+unit = "Page" if data[:1024].lstrip().startswith(b"%PDF") else "Slide"
+viewer = VIEWER_HTML.replace("__SLIDES__", json.dumps(uris)).replace("__UNIT__", json.dumps(unit))
 # Fits Streamlit's centered column (~704px): slide + control bar + hint.
 components.html(viewer, height=round(704 * slide_h / slide_w) + 100)

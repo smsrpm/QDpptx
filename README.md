@@ -1,13 +1,13 @@
 # QDpptx
 
-Minimal Streamlit proof of concept for viewing `.pptx` slides as laid out in PowerPoint
+Minimal Streamlit proof of concept for presenting PDFs and viewing `.pptx` slides as laid out in PowerPoint
 (master/template, layouts, positions, shapes, images) and stepping through the deck.
 
 How it works: LibreOffice (headless) converts the deck to PDF, and PyMuPDF turns each page into an image.
 
 ## Deck library
 
-Put `.pptx` files in the `decks/` folder (subfolders allowed). The app's **Library** view
+Put `.pptx` and `.pdf` files in the `decks/` folder (subfolders allowed). The app's **Library** view
 lets you pick a folder, then a file. **Upload** opens a one-off file from your device.
 See `decks/README.md` for adding files on github.com.
 
