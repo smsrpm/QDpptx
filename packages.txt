@@ -1,0 +1,5 @@
+libreoffice-impress
+fonts-crosextra-carlito
+fonts-crosextra-caladea
+fonts-liberation
+fonts-dejavu-core
