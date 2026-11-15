@@ -1,3 +1,4 @@
+--no-install-recommends
 libreoffice-impress
 cabextract
 fontconfig
