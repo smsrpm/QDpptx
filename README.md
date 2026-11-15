@@ -11,6 +11,18 @@ Put `.pptx` files in the `decks/` folder (subfolders allowed). The app's **Libra
 lets you pick a folder, then a file. **Upload** opens a one-off file from your device.
 See `decks/README.md` for adding files on github.com.
 
+The library is read live from GitHub, so new or replaced files appear within ~30 seconds
+(or immediately with the **↻** button), with no app reboot. If GitHub can't be reached, the app
+falls back to the copy of `decks/` deployed with it.
+
+Optional settings (Streamlit Cloud → app ⋮ → Settings → Secrets):
+
+```toml
+GITHUB_REPO = "smsrpm/QDpptx"                               # default
+GITHUB_BRANCH = "claude/streamlit-powerpoint-reader-qy3svu" # default
+GITHUB_TOKEN = "github_pat_..."  # needed for a private repo; avoids GitHub's anonymous rate limit
+```
+
 ## Presenting
 
 - **⛶ Full screen** button (or **F**, or double-click the slide) shows the slide full screen.

@@ -12,8 +12,10 @@ import struct
 import subprocess
 import tempfile
 from pathlib import Path
+from urllib.parse import quote
 
 import pymupdf
+import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -49,14 +51,61 @@ DECKS_DIR = Path(__file__).parent / "decks"
 TOP = "(top level)"
 
 
-def list_decks() -> dict[str, list[Path]]:
-    """Map each folder (relative to decks/) to the .pptx files directly in it."""
-    folders: dict[str, list[Path]] = {}
-    for f in sorted(DECKS_DIR.rglob("*.pptx"), key=lambda p: str(p).lower()):
-        if f.name.startswith("~$"):  # PowerPoint lock files
+def secret(name: str, default: str = "") -> str:
+    try:
+        return st.secrets.get(name, default)
+    except Exception:  # no secrets file configured
+        return default
+
+
+# The deck library is read live from GitHub, so new uploads appear without a reboot.
+# Override these in Streamlit's Secrets if the repo or branch changes.
+GITHUB_REPO = secret("GITHUB_REPO", "smsrpm/QDpptx")
+GITHUB_BRANCH = secret("GITHUB_BRANCH", "claude/streamlit-powerpoint-reader-qy3svu")
+GITHUB_TOKEN = secret("GITHUB_TOKEN")  # optional; required only for a private repo
+
+
+def gh_get(url: str, raw: bool = False) -> requests.Response:
+    headers = {"Accept": "application/vnd.github.raw" if raw else "application/vnd.github+json"}
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+    resp = requests.get(url, headers=headers, timeout=60)
+    resp.raise_for_status()
+    return resp
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def github_decks() -> dict[str, str]:
+    """Map each .pptx path under decks/ (relative to it) to its git blob SHA."""
+    tree = gh_get(f"https://api.github.com/repos/{GITHUB_REPO}/git/trees/"
+                  f"{quote(GITHUB_BRANCH, safe='')}?recursive=1").json()["tree"]
+    return {item["path"][len("decks/"):]: item["sha"] for item in tree
+            if item["type"] == "blob" and item["path"].startswith("decks/")
+            and item["path"].lower().endswith(".pptx")}
+
+
+@st.cache_data(show_spinner=False, max_entries=10)
+def github_file(sha: str) -> bytes:
+    """Download one file by blob SHA (a new upload gets a new SHA, so this never goes stale)."""
+    return gh_get(f"https://api.github.com/repos/{GITHUB_REPO}/git/blobs/{sha}",
+                  raw=True).content
+
+
+def local_decks() -> dict[str, Path]:
+    """Fallback: the copy of decks/ deployed with the app."""
+    if not DECKS_DIR.is_dir():
+        return {}
+    return {f.relative_to(DECKS_DIR).as_posix(): f for f in DECKS_DIR.rglob("*.pptx")}
+
+
+def group_by_folder(paths) -> dict[str, list[str]]:
+    """Map each folder (relative to decks/) to the deck paths directly in it."""
+    folders: dict[str, list[str]] = {}
+    for p in sorted(paths, key=str.lower):
+        folder, _, name = p.rpartition("/")
+        if name.startswith("~$"):  # PowerPoint lock files
             continue
-        rel = f.parent.relative_to(DECKS_DIR).as_posix()
-        folders.setdefault(TOP if rel == "." else rel, []).append(f)
+        folders.setdefault(folder or TOP, []).append(p)
     # Top level first, then folders alphabetically (parents before subfolders).
     return dict(sorted(folders.items(),
                        key=lambda kv: (kv[0] != TOP, kv[0].lower().split("/"))))
@@ -66,14 +115,32 @@ source = st.radio("Source", ["Library", "Upload"], horizontal=True,
                   label_visibility="collapsed")
 
 if source == "Library":
-    decks = list_decks() if DECKS_DIR.is_dir() else {}
+    try:
+        remote = github_decks()
+        load = lambda p: github_file(remote[p])  # noqa: E731
+        paths = remote
+    except Exception as exc:  # offline, rate-limited, bad token, etc.
+        st.caption(f"Couldn't reach GitHub ({exc.__class__.__name__}); "
+                   "showing the copy deployed with the app.")
+        local = local_decks()
+        load = lambda p: local[p].read_bytes()  # noqa: E731
+        paths = local
+    decks = group_by_folder(paths)
     if not decks:
         st.info("No .pptx files found in the repository's `decks/` folder yet.")
         st.stop()
-    folder_col, file_col = st.columns(2)
+    folder_col, file_col, refresh_col = st.columns([5, 5, 1], vertical_alignment="bottom")
     folder = folder_col.selectbox("Folder", list(decks))
-    chosen = file_col.selectbox("File", decks[folder], format_func=lambda p: p.name)
-    data = chosen.read_bytes()
+    chosen = file_col.selectbox("File", decks[folder], format_func=lambda p: p.rpartition("/")[2])
+    if refresh_col.button("↻", help="Check GitHub for new files"):
+        github_decks.clear()
+        st.rerun()
+    try:
+        with st.spinner("Loading deck…"):
+            data = load(chosen)
+    except Exception as exc:
+        st.error(f"Could not load this file: {exc}")
+        st.stop()
 else:
     uploaded = st.file_uploader("Upload a .pptx file", type="pptx")
     if not uploaded:

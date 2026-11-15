@@ -7,5 +7,5 @@ To add files on github.com: open this folder → **Add file → Upload files**.
 To create a subfolder, use **Add file → Create new file** and type `NewFolder/README.md`
 as the name (GitHub has no empty folders).
 
-Streamlit Cloud redeploys automatically after each commit, so new files appear in the app
-within a minute or so.
+The app reads this folder live from GitHub: new files appear within ~30 seconds,
+or right away if you press the **↻** button next to the File picker. No reboot needed.
