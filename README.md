@@ -40,8 +40,11 @@ streamlit run app.py
 
 ## Streamlit Community Cloud
 
-`packages.txt` installs LibreOffice Impress plus fonts that match the size and spacing of
-Calibri/Cambria (Carlito/Caladea), so text wraps the same way it does in PowerPoint.
+`packages.txt` installs LibreOffice Impress, `cabextract`, and fonts that match the size and spacing
+of Calibri/Cambria (Carlito/Caladea). On first start the app (`fonts.py`) also downloads Microsoft's
+free core fonts (Arial, Trebuchet MS, Verdana, Georgia, Times New Roman, …) from their
+official SourceForge mirror, checks each download's SHA-256, and installs them, so text wraps where
+PowerPoint wraps it. Put any other fonts your decks use in `fonts/`.
 
 ## Known limits
 

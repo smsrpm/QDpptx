@@ -19,6 +19,8 @@ import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
+from fonts import install_fonts
+
 st.set_page_config(page_title="PPTX Viewer", layout="centered")
 st.title("PPTX Viewer")
 
@@ -46,6 +48,17 @@ def render_slides(data: bytes, zoom: float = 2.0) -> list[bytes]:
 if not SOFFICE:
     st.error("LibreOffice is not installed, so slides cannot be rendered.")
     st.stop()
+
+
+@st.cache_resource(show_spinner="Installing fonts (first run only)…")
+def setup_fonts() -> list[str]:
+    return install_fonts()
+
+
+font_problems = setup_fonts()
+if font_problems:
+    st.caption("Some fonts could not be installed, so text may wrap differently: "
+               + "; ".join(font_problems))
 
 DECKS_DIR = Path(__file__).parent / "decks"
 TOP = "(top level)"

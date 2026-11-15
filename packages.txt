@@ -1,4 +1,6 @@
 libreoffice-impress
+cabextract
+fontconfig
 fonts-crosextra-carlito
 fonts-crosextra-caladea
 fonts-liberation
