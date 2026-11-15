@@ -28,6 +28,9 @@ GITHUB_TOKEN = "github_pat_..."  # needed for a private repo; avoids GitHub's an
 - **⛶ Full screen** button (or **F**, or double-click the slide) shows the slide full screen.
 - **>** / **<** (also → / ←, Page Down / Page Up, and most presenter clickers) move forward / back.
 - **Esc** leaves full screen.
+- **Phones/tablets:** swipe left/right to move; in full screen, tap the right/left side of the slide.
+  On iPhone (where browsers can't go full screen) the slide fills the browser window instead,
+  with an **✕** button to exit. Rotate to landscape for the biggest view.
 
 ## Run locally
 

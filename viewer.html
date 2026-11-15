@@ -20,24 +20,37 @@
   .stage img { width: 100%; height: auto; display: block; }
   .hint { font-size: 12px; opacity: .6; margin-top: 6px; text-align: center; }
 
-  /* Full screen: slide fills the screen on black, controls hidden. */
-  #viewer:fullscreen { background: #000; display: flex; align-items: center; justify-content: center; }
-  #viewer:fullscreen .bar, #viewer:fullscreen .hint { display: none; }
-  #viewer:fullscreen .stage { border: 0; padding: 0; width: 100vw; height: 100vh;
-                              display: flex; align-items: center; justify-content: center; }
-  #viewer:fullscreen .stage img { width: 100vw; height: 100vh; object-fit: contain; }
+  .close { display: none; }
+  @media (max-width: 520px) {  /* phones: icon-only buttons so the bar fits on one line */
+    .bar .lbl { display: none; }
+    .bar button { padding: 8px 16px; font-size: 16px; }
+  }
+
+  /* Full view: slide fills the screen on black, controls hidden. Used both for real
+     full screen (laptops, iPad, Android) and the fill-the-window fallback (iPhone). */
+  #viewer.full { position: fixed; inset: 0; background: #000; display: flex;
+                 align-items: center; justify-content: center; }
+  #viewer.full .bar, #viewer.full .hint { display: none; }
+  #viewer.full .stage { border: 0; border-radius: 0; padding: 0; width: 100%; height: 100%;
+                        display: flex; align-items: center; justify-content: center; }
+  #viewer.full .stage img { width: 100%; height: 100%; object-fit: contain; }
+  #viewer.full.fill .close { display: block; position: absolute; top: 10px; right: 10px;
+      width: 40px; height: 40px; padding: 0; border-radius: 50%; font-size: 18px; line-height: 1;
+      color: #fff; background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.35); }
+  .stage { touch-action: pan-y; }  /* vertical scroll stays native; horizontal = swipe */
 </style>
 </head>
 <body>
 <div id="viewer" tabindex="0">
   <div class="bar">
-    <button id="prev">◀ Prev</button>
+    <button id="prev" aria-label="Previous slide">◀<span class="lbl"> Prev</span></button>
     <span class="count" id="count"></span>
-    <button id="next">Next ▶</button>
-    <button id="fs" title="Full screen (F)">⛶ Full screen</button>
+    <button id="next" aria-label="Next slide"><span class="lbl">Next </span>▶</button>
+    <button id="fs" title="Full screen (F)" aria-label="Full screen">⛶<span class="lbl"> Full screen</span></button>
   </div>
   <div class="stage"><img id="slide" alt="Slide"></div>
-  <div class="hint">Keys: &lt; / &gt; (or ← / →) to move · F for full screen · Esc to exit</div>
+  <button class="close" id="close" aria-label="Exit full screen">✕</button>
+  <div class="hint" id="hint">Keys: &lt; / &gt; (or ← / →) to move · F for full screen · Esc to exit</div>
 </div>
 <script>
   const slides = __SLIDES__;
@@ -56,10 +69,48 @@
     next.disabled = i === slides.length - 1;
   }
 
+  // Real full screen where the browser allows it; otherwise (iPhone) stretch the
+  // slide's frame over the whole browser window.
+  const canFullscreen = !!(document.fullscreenEnabled && viewer.requestFullscreen);
+  const host = window.frameElement;  // our <iframe> on the Streamlit page
+  let filled = false, savedFrameStyle = "", savedBodyOverflow = "";
+
+  function isFull() { return !!document.fullscreenElement || filled; }
+
+  function setFill(on) {
+    if (!host || on === filled) return;
+    const pdoc = host.ownerDocument;
+    if (on) {
+      savedFrameStyle = host.style.cssText;
+      savedBodyOverflow = pdoc.body.style.overflow;
+      host.style.cssText += ";position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;" +
+                            "max-width:none;z-index:2147483647;background:#000;border:0";
+      pdoc.body.style.overflow = "hidden";
+      pdoc.defaultView.__pptxBodyOverflow = savedBodyOverflow;
+    } else {
+      host.style.cssText = savedFrameStyle;
+      pdoc.body.style.overflow = savedBodyOverflow;
+      delete pdoc.defaultView.__pptxBodyOverflow;
+    }
+    filled = on;
+    viewer.classList.toggle("full", on);
+    viewer.classList.toggle("fill", on);
+  }
+
   function toggleFullscreen() {
     if (document.fullscreenElement) document.exitFullscreen();
-    else viewer.requestFullscreen().catch(() => {});
+    else if (filled) setFill(false);
+    else if (canFullscreen) viewer.requestFullscreen().catch(() => setFill(true));
+    else setFill(true);
   }
+
+  function exitFull() {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else setFill(false);
+  }
+
+  document.addEventListener("fullscreenchange", () =>
+    viewer.classList.toggle("full", !!document.fullscreenElement));
 
   function onKey(e) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -69,18 +120,47 @@
     if ([">", ".", "ArrowRight", "PageDown", " "].includes(e.key)) { show(i + 1); e.preventDefault(); }
     else if (["<", ",", "ArrowLeft", "PageUp"].includes(e.key)) { show(i - 1); e.preventDefault(); }
     else if (e.key === "f" || e.key === "F") { toggleFullscreen(); e.preventDefault(); }
-    else if (e.key === "Escape" && document.fullscreenElement) { document.exitFullscreen(); }
+    else if (e.key === "Escape" && isFull()) { exitFull(); }
   }
 
   prev.onclick = () => show(i - 1);
   next.onclick = () => show(i + 1);
   document.getElementById("fs").onclick = toggleFullscreen;
-  img.ondblclick = toggleFullscreen;
+  document.getElementById("close").onclick = exitFull;
+
+  // Touch: swipe left/right anywhere on the slide; in full view, tap the right or
+  // left part of the slide. Mouse behaviour is unchanged (double-click = full screen).
+  let start = null, lastTouch = 0;
+  img.addEventListener("pointerdown", e => {
+    if (e.pointerType === "touch") start = { x: e.clientX, y: e.clientY, t: Date.now() };
+  });
+  img.addEventListener("pointerup", e => {
+    if (e.pointerType !== "touch" || !start) return;
+    lastTouch = Date.now();
+    const dx = e.clientX - start.x, dy = e.clientY - start.y, dt = Date.now() - start.t;
+    start = null;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > 1.5 * Math.abs(dy)) { show(dx < 0 ? i + 1 : i - 1); return; }
+    if (isFull() && Math.abs(dx) < 10 && Math.abs(dy) < 10 && dt < 500) {
+      show(e.clientX > window.innerWidth * 0.4 ? i + 1 : i - 1);
+    }
+  });
+  img.addEventListener("pointercancel", () => { start = null; });
+  img.ondblclick = () => { if (Date.now() - lastTouch > 700) toggleFullscreen(); };
+
+  if (matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches) {
+    document.getElementById("hint").textContent =
+      "Swipe to move · in full screen, tap the right/left side · ✕ to exit";
+  }
   document.addEventListener("keydown", onKey);
   // Also listen on the Streamlit page itself, so keys work without clicking the slide first.
   // Replace any handler left by a previous render so keys don't act twice.
   try {
     const p = window.parent;
+    // A previous render may have been replaced while filling the window: unlock scrolling.
+    if ("__pptxBodyOverflow" in p) {
+      p.document.body.style.overflow = p.__pptxBodyOverflow;
+      delete p.__pptxBodyOverflow;
+    }
     if (p.__pptxKeyHandler) p.document.removeEventListener("keydown", p.__pptxKeyHandler);
     p.__pptxKeyHandler = onKey;
     p.document.addEventListener("keydown", onKey);
