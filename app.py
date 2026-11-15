@@ -5,17 +5,22 @@ Rendering pipeline: LibreOffice (headless) converts .pptx -> PDF, then
 PyMuPDF rasterises each PDF page to a PNG image.
 """
 
+import base64
+import json
 import shutil
+import struct
 import subprocess
 import tempfile
 from pathlib import Path
 
 import pymupdf
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="PPTX Viewer", layout="centered")
 st.title("PPTX Viewer")
 
+VIEWER_HTML = (Path(__file__).parent / "viewer.html").read_text(encoding="utf-8")
 SOFFICE = shutil.which("soffice") or shutil.which("libreoffice")
 
 
@@ -68,12 +73,12 @@ if source == "Library":
     folder_col, file_col = st.columns(2)
     folder = folder_col.selectbox("Folder", list(decks))
     chosen = file_col.selectbox("File", decks[folder], format_func=lambda p: p.name)
-    data, deck_id = chosen.read_bytes(), str(chosen)
+    data = chosen.read_bytes()
 else:
     uploaded = st.file_uploader("Upload a .pptx file", type="pptx")
     if not uploaded:
         st.stop()
-    data, deck_id = uploaded.getvalue(), uploaded.file_id
+    data = uploaded.getvalue()
 
 try:
     with st.spinner("Rendering slides…"):
@@ -86,27 +91,9 @@ if not slides:
     st.warning("This deck has no slides.")
     st.stop()
 
-# Reset to the first slide whenever a different deck is chosen.
-if st.session_state.get("deck_id") != deck_id:
-    st.session_state.deck_id = deck_id
-    st.session_state.idx = 0
-
-n = len(slides)
-
-
-def step(delta: int):
-    st.session_state.idx = max(0, min(n - 1, st.session_state.idx + delta))
-
-
-prev_col, mid_col, next_col = st.columns([1, 2, 1])
-prev_col.button("◀ Prev", on_click=step, args=(-1,),
-                disabled=st.session_state.idx == 0, use_container_width=True)
-next_col.button("Next ▶", on_click=step, args=(1,),
-                disabled=st.session_state.idx >= n - 1, use_container_width=True)
-mid_col.markdown(
-    f"<div style='text-align:center'>Slide {st.session_state.idx + 1} of {n}</div>",
-    unsafe_allow_html=True,
-)
-
-with st.container(border=True):
-    st.image(slides[st.session_state.idx], use_container_width=True)
+# Slide display, navigation, keyboard and full screen run in the browser.
+slide_w, slide_h = struct.unpack(">II", slides[0][16:24])  # PNG header size
+uris = ["data:image/png;base64," + base64.b64encode(s).decode() for s in slides]
+viewer = VIEWER_HTML.replace("__SLIDES__", json.dumps(uris))
+# Fits Streamlit's centered column (~704px): slide + control bar + hint.
+components.html(viewer, height=round(704 * slide_h / slide_w) + 100)

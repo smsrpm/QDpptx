@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { --border: #d6d6d9; --text: #31333f; --btn-bg: #fff; --btn-hover: #f0f2f6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --border: #3d3f4a; --text: #fafafa; --btn-bg: #0e1117; --btn-hover: #262730; }
+  }
+  html, body { margin: 0; padding: 0; background: transparent; color: var(--text);
+               font-family: "Source Sans Pro", system-ui, sans-serif; }
+  #viewer { outline: none; }
+  .bar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .bar .count { flex: 1; text-align: center; font-size: 15px; }
+  button { font: inherit; font-size: 14px; color: var(--text); background: var(--btn-bg);
+           border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px; cursor: pointer; }
+  button:hover:not(:disabled) { background: var(--btn-hover); }
+  button:disabled { opacity: .4; cursor: default; }
+  .stage { border: 1px solid var(--border); border-radius: 8px; padding: 8px; line-height: 0; }
+  .stage img { width: 100%; height: auto; display: block; }
+  .hint { font-size: 12px; opacity: .6; margin-top: 6px; text-align: center; }
+
+  /* Full screen: slide fills the screen on black, controls hidden. */
+  #viewer:fullscreen { background: #000; display: flex; align-items: center; justify-content: center; }
+  #viewer:fullscreen .bar, #viewer:fullscreen .hint { display: none; }
+  #viewer:fullscreen .stage { border: 0; padding: 0; width: 100vw; height: 100vh;
+                              display: flex; align-items: center; justify-content: center; }
+  #viewer:fullscreen .stage img { width: 100vw; height: 100vh; object-fit: contain; }
+</style>
+</head>
+<body>
+<div id="viewer" tabindex="0">
+  <div class="bar">
+    <button id="prev">◀ Prev</button>
+    <span class="count" id="count"></span>
+    <button id="next">Next ▶</button>
+    <button id="fs" title="Full screen (F)">⛶ Full screen</button>
+  </div>
+  <div class="stage"><img id="slide" alt="Slide"></div>
+  <div class="hint">Keys: &lt; / &gt; (or ← / →) to move · F for full screen · Esc to exit</div>
+</div>
+<script>
+  const slides = __SLIDES__;
+  const viewer = document.getElementById("viewer");
+  const img = document.getElementById("slide");
+  const prev = document.getElementById("prev");
+  const next = document.getElementById("next");
+  const count = document.getElementById("count");
+  let i = 0;
+
+  function show(k) {
+    i = Math.max(0, Math.min(slides.length - 1, k));
+    img.src = slides[i];
+    count.textContent = `Slide ${i + 1} of ${slides.length}`;
+    prev.disabled = i === 0;
+    next.disabled = i === slides.length - 1;
+  }
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else viewer.requestFullscreen().catch(() => {});
+  }
+
+  function onKey(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    // "<" and ">" (Shift + , and .), plus unshifted , . arrows and presenter-clicker keys.
+    if ([">", ".", "ArrowRight", "PageDown", " "].includes(e.key)) { show(i + 1); e.preventDefault(); }
+    else if (["<", ",", "ArrowLeft", "PageUp"].includes(e.key)) { show(i - 1); e.preventDefault(); }
+    else if (e.key === "f" || e.key === "F") { toggleFullscreen(); e.preventDefault(); }
+    else if (e.key === "Escape" && document.fullscreenElement) { document.exitFullscreen(); }
+  }
+
+  prev.onclick = () => show(i - 1);
+  next.onclick = () => show(i + 1);
+  document.getElementById("fs").onclick = toggleFullscreen;
+  img.ondblclick = toggleFullscreen;
+  document.addEventListener("keydown", onKey);
+  // Also listen on the Streamlit page itself, so keys work without clicking the slide first.
+  // Replace any handler left by a previous render so keys don't act twice.
+  try {
+    const p = window.parent;
+    if (p.__pptxKeyHandler) p.document.removeEventListener("keydown", p.__pptxKeyHandler);
+    p.__pptxKeyHandler = onKey;
+    p.document.addEventListener("keydown", onKey);
+  } catch (_) {}
+
+  show(0);
+  viewer.focus();
+</script>
+</body>
+</html>

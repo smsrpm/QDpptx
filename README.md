@@ -11,6 +11,12 @@ Put `.pptx` files in the `decks/` folder (subfolders allowed). The app's **Libra
 lets you pick a folder, then a file. **Upload** opens a one-off file from your device.
 See `decks/README.md` for adding files on github.com.
 
+## Presenting
+
+- **⛶ Full screen** button (or **F**, or double-click the slide) shows the slide full screen.
+- **>** / **<** (also → / ←, Page Down / Page Up, and most presenter clickers) move forward / back.
+- **Esc** leaves full screen.
+
 ## Run locally
 
 Requires LibreOffice (`soffice` on PATH).
