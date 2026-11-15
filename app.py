@@ -40,13 +40,44 @@ if not SOFFICE:
     st.error("LibreOffice is not installed, so slides cannot be rendered.")
     st.stop()
 
-uploaded = st.file_uploader("Upload a .pptx file", type="pptx")
-if not uploaded:
-    st.stop()
+DECKS_DIR = Path(__file__).parent / "decks"
+TOP = "(top level)"
+
+
+def list_decks() -> dict[str, list[Path]]:
+    """Map each folder (relative to decks/) to the .pptx files directly in it."""
+    folders: dict[str, list[Path]] = {}
+    for f in sorted(DECKS_DIR.rglob("*.pptx"), key=lambda p: str(p).lower()):
+        if f.name.startswith("~$"):  # PowerPoint lock files
+            continue
+        rel = f.parent.relative_to(DECKS_DIR).as_posix()
+        folders.setdefault(TOP if rel == "." else rel, []).append(f)
+    # Top level first, then folders alphabetically (parents before subfolders).
+    return dict(sorted(folders.items(),
+                       key=lambda kv: (kv[0] != TOP, kv[0].lower().split("/"))))
+
+
+source = st.radio("Source", ["Library", "Upload"], horizontal=True,
+                  label_visibility="collapsed")
+
+if source == "Library":
+    decks = list_decks() if DECKS_DIR.is_dir() else {}
+    if not decks:
+        st.info("No .pptx files found in the repository's `decks/` folder yet.")
+        st.stop()
+    folder_col, file_col = st.columns(2)
+    folder = folder_col.selectbox("Folder", list(decks))
+    chosen = file_col.selectbox("File", decks[folder], format_func=lambda p: p.name)
+    data, deck_id = chosen.read_bytes(), str(chosen)
+else:
+    uploaded = st.file_uploader("Upload a .pptx file", type="pptx")
+    if not uploaded:
+        st.stop()
+    data, deck_id = uploaded.getvalue(), uploaded.file_id
 
 try:
     with st.spinner("Rendering slides…"):
-        slides = render_slides(uploaded.getvalue())
+        slides = render_slides(data)
 except Exception as exc:  # conversion failures, corrupt files, timeouts
     st.error(f"Could not render this file: {exc}")
     st.stop()
@@ -55,9 +86,9 @@ if not slides:
     st.warning("This deck has no slides.")
     st.stop()
 
-# Reset position when a new file is uploaded.
-if st.session_state.get("file_id") != uploaded.file_id:
-    st.session_state.file_id = uploaded.file_id
+# Reset to the first slide whenever a different deck is chosen.
+if st.session_state.get("deck_id") != deck_id:
+    st.session_state.deck_id = deck_id
     st.session_state.idx = 0
 
 n = len(slides)

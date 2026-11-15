@@ -5,6 +5,12 @@ Minimal Streamlit proof of concept for viewing `.pptx` slides as laid out in Pow
 
 How it works: LibreOffice (headless) converts the deck to PDF, and PyMuPDF turns each page into an image.
 
+## Deck library
+
+Put `.pptx` files in the `decks/` folder (subfolders allowed). The app's **Library** view
+lets you pick a folder, then a file. **Upload** opens a one-off file from your device.
+See `decks/README.md` for adding files on github.com.
+
 ## Run locally
 
 Requires LibreOffice (`soffice` on PATH).
