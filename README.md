@@ -32,6 +32,21 @@ GITHUB_TOKEN = "github_pat_..."  # needed for a private repo; avoids GitHub's an
   On iPhone (where browsers can't go full screen) the slide fills the browser window instead,
   with an **✕** button to exit. Rotate to landscape for the biggest view.
 
+## Home-screen icon
+
+Streamlit serves its own page, so "Add to Home Screen" on the app address always shows Streamlit's
+logo. The `docs/` folder is a small launcher page with the QDpptx icon and name that opens the app
+in a full-window frame. It is published with GitHub Pages:
+
+1. On github.com: **Settings → Pages → Build and deployment → Source: Deploy from a branch**,
+   branch `claude/streamlit-powerpoint-reader-qy3svu`, folder `/docs`, **Save**.
+2. After a minute, open **https://smsrpm.github.io/QDpptx/** on the phone and use
+   **Share → Add to Home Screen** (iPhone) or **⋮ → Add to Home screen** (Android).
+3. Delete any older shortcut first: iOS never updates the icon of an existing shortcut.
+
+The icon source is `docs/qdpptx-icon.svg`. If the app address changes, edit the two addresses in
+`docs/index.html`.
+
 ## Run locally
 
 Requires LibreOffice (`soffice` on PATH).

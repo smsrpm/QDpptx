@@ -21,7 +21,8 @@ import streamlit.components.v1 as components
 
 from fonts import install_fonts
 
-st.set_page_config(page_title="PPTX Viewer", layout="centered")
+st.set_page_config(page_title="PPTX Viewer", layout="centered",
+                   page_icon=str(Path(__file__).parent / "docs" / "icon-192.png"))
 st.title("PPTX Viewer")
 
 VIEWER_HTML = (Path(__file__).parent / "viewer.html").read_text(encoding="utf-8")
